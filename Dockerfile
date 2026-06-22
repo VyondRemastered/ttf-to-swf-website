@@ -1,6 +1,9 @@
-FROM node:20
+FROM debian:bullseye
 
-RUN apt-get update && apt-get install -y swftools
+RUN apt-get update && apt-get install -y \
+    swftools \
+    nodejs \
+    npm
 
 WORKDIR /app
 
@@ -8,8 +11,6 @@ COPY package.json .
 RUN npm install
 
 COPY . .
-
-RUN mkdir -p uploads
 
 EXPOSE 3000
 
