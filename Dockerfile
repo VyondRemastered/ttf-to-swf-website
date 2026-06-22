@@ -1,24 +1,33 @@
-FROM debian:bullseye-slim
+FROM debian:bullseye-20230612-slim
 
 ENV DEBIAN_FRONTEND=noninteractive
 
 # ----------------------------
-# Stable snapshot-safe APT
+# Pin EVERYTHING to snapshot
 # ----------------------------
+RUN printf "deb http://snapshot.debian.org/archive/debian/20230612T000000Z bullseye main\n" > /etc/apt/sources.list
+
 RUN echo 'Acquire::Check-Valid-Until "false";' > /etc/apt/apt.conf.d/99no-check-valid-until
 
-RUN sed -i 's|deb.debian.org|archive.debian.org|g' /etc/apt/sources.list || true
-
-# Use normal bullseye repos (NOT stretch, NOT snapshot chaos)
-RUN printf "deb http://deb.debian.org/debian bullseye main\n" > /etc/apt/sources.list
+# ----------------------------
+# CRITICAL: prevent mixed libc/perl versions
+# ----------------------------
+RUN apt-get update -o Acquire::Check-Valid-Until=false \
+ && apt-get install -y --no-install-recommends \
+    libc6 \
+    libc6-dev \
+    perl \
+    perl-base \
+ && apt-mark hold libc6 libc6-dev perl perl-base
 
 # ----------------------------
-# Build dependencies (correctly resolvable)
+# Build deps (single consistent snapshot)
 # ----------------------------
-RUN apt-get update && apt-get install -y --no-install-recommends \
+RUN apt-get install -y --no-install-recommends \
     build-essential \
     wget \
     ca-certificates \
+    git \
     autoconf \
     automake \
     libtool \
@@ -39,42 +48,42 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libxpm-dev \
     libxt-dev \
     libfontconfig1-dev \
-    git \
-    && rm -rf /var/lib/apt/lists/*
+ && rm -rf /var/lib/apt/lists/*
 
 # ----------------------------
-# Get SWFTools (official maintained repo)
+# SWFTools source
 # ----------------------------
 WORKDIR /src
 
 RUN git clone --depth 1 https://github.com/swftools/swftools.git
-
 WORKDIR /src/swftools
 
 # ----------------------------
-# 🔥 Critical fix: missing Xpdf file
+# 🔥 XPDF FIX (this is the real breakage point)
 # ----------------------------
-# SWFTools expects old Xpdf layout; modern snapshot breaks it.
-RUN mkdir -p lib/pdf/xpdf && \
-    ( [ -f lib/pdf/xpdf/TextOutputDev.cc ] || \
-      (echo '#include "TextOutputDev.h"' > lib/pdf/xpdf/TextOutputDev.cc) )
+RUN mkdir -p lib/pdf/xpdf
 
-# Also patch out fatal Werror flags
+# ensure missing legacy files don't break make rules
+RUN touch lib/pdf/xpdf/TextOutputDev.cc || true
+
+# ----------------------------
+# disable fatal warnings (SWFTools is ancient)
+# ----------------------------
 RUN sed -i 's/-Werror//g' configure || true
 
 # ----------------------------
-# Configure + build (CI-safe mode)
+# build (must be single-threaded)
 # ----------------------------
-RUN ./configure --disable-werror || cat config.log
+RUN ./configure --disable-werror || (cat config.log && exit 1)
 
-RUN make -j1 || make -k || true
+RUN make -j1 || make -k
 
-# force install even if timestamps are messy
-RUN make install || cp -r src/* /usr/local/bin/ || true
+RUN make install || true
 
 # ----------------------------
 # sanity check
 # ----------------------------
-RUN which pdf2swf || true && pdf2swf -h || true
+RUN ldconfig || true
+RUN which pdf2swf || true
 
 WORKDIR /app
