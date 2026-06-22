@@ -1,18 +1,18 @@
-FROM debian:bullseye
-
-RUN apt-get update && apt-get install -y ca-certificates wget gnupg
-
-# allow expired snapshot repo metadata
-RUN echo "Acquire::Check-Valid-Until \"false\";" > /etc/apt/apt.conf.d/99no-check-valid-until
-
-# use snapshot repo
-RUN echo "deb http://snapshot.debian.org/archive/debian/20210101T000000Z bullseye main" > /etc/apt/sources.list
+FROM ubuntu:16.04
 
 RUN apt-get update && apt-get install -y \
-    swftools \
-    nodejs \
-    npm \
-    ca-certificates
+    wget \
+    ca-certificates \
+    libjpeg-turbo8 \
+    libfreetype6 \
+    libpng12-0 \
+    zlib1g
+
+# download precompiled SWFTools binary bundle
+RUN wget https://github.com/itsmattch/swftools-binaries/raw/main/swftools-linux.tar.gz \
+    && tar -xzf swftools-linux.tar.gz \
+    && mv swftools /usr/local/swftools \
+    && ln -s /usr/local/swftools/bin/* /usr/local/bin/
 
 WORKDIR /app
 
