@@ -1,1 +1,39 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>TTF → SWF Converter</title>
+</head>
+<body>
+  <h2>TTF → SWF Converter</h2>
 
+  <input type="file" id="file" />
+  <button onclick="convert()">Convert</button>
+
+  <script>
+    async function convert() {
+      const file = document.getElementById("file").files[0];
+
+      const formData = new FormData();
+      formData.append("font", file);
+
+      const res = await fetch("https://YOUR-RENDER-URL.onrender.com/convert", {
+        method: "POST",
+        body: formData
+      });
+
+      if (!res.ok) {
+        alert("Conversion failed");
+        return;
+      }
+
+      const blob = await res.blob();
+
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "output.swf";
+      a.click();
+    }
+  </script>
+</body>
+</html>
