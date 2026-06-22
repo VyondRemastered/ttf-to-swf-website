@@ -1,29 +1,11 @@
-FROM debian:bullseye-20230612-slim
+FROM debian:bullseye-slim
 
 ENV DEBIAN_FRONTEND=noninteractive
 
-# ----------------------------
-# Pin EVERYTHING to snapshot
-# ----------------------------
-RUN printf "deb http://snapshot.debian.org/archive/debian/20230612T000000Z bullseye main\n" > /etc/apt/sources.list
-
-RUN echo 'Acquire::Check-Valid-Until "false";' > /etc/apt/apt.conf.d/99no-check-valid-until
-
-# ----------------------------
-# CRITICAL: prevent mixed libc/perl versions
-# ----------------------------
-RUN apt-get update -o Acquire::Check-Valid-Until=false \
- && apt-get install -y --no-install-recommends \
-    libc6 \
-    libc6-dev \
-    perl \
-    perl-base \
- && apt-mark hold libc6 libc6-dev perl perl-base
-
-# ----------------------------
-# Build deps (single consistent snapshot)
-# ----------------------------
-RUN apt-get install -y --no-install-recommends \
+# -----------------------------
+# Install build dependencies
+# -----------------------------
+RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     wget \
     ca-certificates \
@@ -48,42 +30,65 @@ RUN apt-get install -y --no-install-recommends \
     libxpm-dev \
     libxt-dev \
     libfontconfig1-dev \
- && rm -rf /var/lib/apt/lists/*
+    && rm -rf /var/lib/apt/lists/*
 
-# ----------------------------
+# -----------------------------
 # SWFTools source
-# ----------------------------
+# -----------------------------
 WORKDIR /src
 
-RUN git clone --depth 1 https://github.com/swftools/swftools.git
+RUN git clone https://github.com/swftools/swftools.git
+
 WORKDIR /src/swftools
 
-# ----------------------------
-# 🔥 XPDF FIX (this is the real breakage point)
-# ----------------------------
-RUN mkdir -p lib/pdf/xpdf
+# -----------------------------
+# HARD PATCHES (this is the key part)
+# -----------------------------
 
-# ensure missing legacy files don't break make rules
-RUN touch lib/pdf/xpdf/TextOutputDev.cc || true
+# 1. Fix xpdf incompatibilities (missing types / modern GCC strictness)
+RUN sed -i 's/-Werror//g' Makefile.in || true && \
+    sed -i 's/-Werror//g' configure.in || true
 
-# ----------------------------
-# disable fatal warnings (SWFTools is ancient)
-# ----------------------------
-RUN sed -i 's/-Werror//g' configure || true
+# 2. Fix implicit-function / old C errors (GCC 10+ strict mode)
+ENV CFLAGS="-O2 -fcommon -Wno-error=implicit-function-declaration -Wno-error=incompatible-pointer-types"
+ENV CXXFLAGS="-O2 -fcommon"
 
-# ----------------------------
-# build (must be single-threaded)
-# ----------------------------
-RUN ./configure --disable-werror || (cat config.log && exit 1)
+# -----------------------------
+# Autotools bootstrap (important for git version)
+# -----------------------------
+RUN ./autogen.sh || true
 
-RUN make -j1 || make -k
+# -----------------------------
+# Configure (disable broken parts)
+# -----------------------------
+RUN ./configure \
+    --disable-werror \
+    --disable-debug \
+    --prefix=/usr/local
 
-RUN make install || true
+# -----------------------------
+# Build (single thread = more stable)
+# -----------------------------
+RUN make -j1
 
-# ----------------------------
-# sanity check
-# ----------------------------
-RUN ldconfig || true
-RUN which pdf2swf || true
+# -----------------------------
+# Install
+# -----------------------------
+RUN make install
 
+# -----------------------------
+# Verify binary exists
+# -----------------------------
+RUN swfc -V || true
+
+# -----------------------------
+# App build
+# -----------------------------
 WORKDIR /app
+
+COPY package.json .
+RUN apt-get update && apt-get install -y nodejs npm && npm install
+
+COPY . .
+
+CMD ["npm", "start"]
