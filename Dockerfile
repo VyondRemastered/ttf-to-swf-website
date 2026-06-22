@@ -31,12 +31,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libfontconfig1-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# -----------------------------
-# Use RELEASE tarball (important)
-# Git HEAD is broken for pdf/xpdf
-# -----------------------------
 WORKDIR /src
 
+# -----------------------------
+# SWFTools source
+# -----------------------------
 RUN wget https://github.com/swftools/swftools/archive/refs/tags/v0.9.2.tar.gz \
     && tar -xzf v0.9.2.tar.gz \
     && mv swftools-0.9.2 swftools
@@ -44,28 +43,36 @@ RUN wget https://github.com/swftools/swftools/archive/refs/tags/v0.9.2.tar.gz \
 WORKDIR /src/swftools
 
 # -----------------------------
-# CRITICAL PATCHES
+# Build flags for legacy C
 # -----------------------------
-
-# 1. disable strict warnings that break legacy C
 ENV CFLAGS="-O2 -fcommon -Wno-error=implicit-function-declaration -Wno-error=incompatible-pointer-types"
 ENV CXXFLAGS="-O2 -fcommon"
 
-# 2. fix missing implicit rule expectations
-RUN find . -name Makefile.in -exec sed -i 's/-Werror//g' {} \; || true
+# -----------------------------
+# HARD REMOVE PDF SYSTEM (IMPORTANT)
+# -----------------------------
 
-# 3. force autotools regeneration (important for xpdf paths)
+# 1. remove pdf module entirely (prevents TextOutputDev errors)
+RUN rm -rf lib/pdf
+
+# 2. remove pdf references from makefiles
+RUN find . -name Makefile.in -exec sed -i \
+    -e '/pdf/d' \
+    -e '/PDF/d' \
+    {} \; || true
+
+# 3. regenerate build system
 RUN autoreconf -fi || true
 
 # -----------------------------
-# Configure (disable fragile parts)
+# Configure (no pdf dependency)
 # -----------------------------
 RUN ./configure \
     --prefix=/usr/local \
     --disable-werror
 
 # -----------------------------
-# Build (must be single-threaded for SWFTools)
+# Build
 # -----------------------------
 RUN make -j1
 
@@ -78,15 +85,3 @@ RUN make install
 # Verify
 # -----------------------------
 RUN swfc -h || true
-
-# -----------------------------
-# App
-# -----------------------------
-WORKDIR /app
-
-COPY package.json .
-RUN apt-get update && apt-get install -y nodejs npm && npm install
-
-COPY . .
-
-CMD ["npm", "start"]
