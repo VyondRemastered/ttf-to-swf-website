@@ -12,9 +12,10 @@ RUN apt-get update && apt-get install -y \
     wget
 
 # download SWFTools source
-RUN wget https://www.swftools.org/swftools-0.9.2.tar.gz \
-    && tar -xzf swftools-0.9.2.tar.gz \
-    && cd swftools-0.9.2 \
+RUN apt-get update && apt-get install -y git
+
+RUN git clone https://github.com/matthiaskramm/swftools.git \
+    && cd swftools \
     && ./configure \
     && make \
     && make install
