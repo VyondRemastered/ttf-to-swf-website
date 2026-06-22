@@ -1,15 +1,14 @@
-FROM debian:bullseye-slim
+FROM debian:bullseye
 
 ENV DEBIAN_FRONTEND=noninteractive
 
 # -----------------------------
-# Install build dependencies
+# Build deps
 # -----------------------------
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     wget \
     ca-certificates \
-    git \
     autoconf \
     automake \
     libtool \
@@ -33,41 +32,40 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # -----------------------------
-# SWFTools source
+# Use RELEASE tarball (important)
+# Git HEAD is broken for pdf/xpdf
 # -----------------------------
 WORKDIR /src
 
-RUN git clone https://github.com/swftools/swftools.git
+RUN wget https://github.com/swftools/swftools/archive/refs/tags/v0.9.2.tar.gz \
+    && tar -xzf v0.9.2.tar.gz \
+    && mv swftools-0.9.2 swftools
 
 WORKDIR /src/swftools
 
 # -----------------------------
-# HARD PATCHES (this is the key part)
+# CRITICAL PATCHES
 # -----------------------------
 
-# 1. Fix xpdf incompatibilities (missing types / modern GCC strictness)
-RUN sed -i 's/-Werror//g' Makefile.in || true && \
-    sed -i 's/-Werror//g' configure.in || true
-
-# 2. Fix implicit-function / old C errors (GCC 10+ strict mode)
+# 1. disable strict warnings that break legacy C
 ENV CFLAGS="-O2 -fcommon -Wno-error=implicit-function-declaration -Wno-error=incompatible-pointer-types"
 ENV CXXFLAGS="-O2 -fcommon"
 
-# -----------------------------
-# Autotools bootstrap (important for git version)
-# -----------------------------
-RUN ./autogen.sh || true
+# 2. fix missing implicit rule expectations
+RUN find . -name Makefile.in -exec sed -i 's/-Werror//g' {} \; || true
+
+# 3. force autotools regeneration (important for xpdf paths)
+RUN autoreconf -fi || true
 
 # -----------------------------
-# Configure (disable broken parts)
+# Configure (disable fragile parts)
 # -----------------------------
 RUN ./configure \
-    --disable-werror \
-    --disable-debug \
-    --prefix=/usr/local
+    --prefix=/usr/local \
+    --disable-werror
 
 # -----------------------------
-# Build (single thread = more stable)
+# Build (must be single-threaded for SWFTools)
 # -----------------------------
 RUN make -j1
 
@@ -77,12 +75,12 @@ RUN make -j1
 RUN make install
 
 # -----------------------------
-# Verify binary exists
+# Verify
 # -----------------------------
-RUN swfc -V || true
+RUN swfc -h || true
 
 # -----------------------------
-# App build
+# App
 # -----------------------------
 WORKDIR /app
 
