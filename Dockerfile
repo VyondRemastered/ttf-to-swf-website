@@ -1,18 +1,32 @@
-FROM ubuntu:16.04
+FROM debian:stretch
+
+# Archive repos (required for EOL Debian)
+RUN sed -i 's/deb.debian.org/archive.debian.org/g' /etc/apt/sources.list && \
+    sed -i 's|security.debian.org|archive.debian.org|g' /etc/apt/sources.list && \
+    echo 'Acquire::Check-Valid-Until "false";' > /etc/apt/apt.conf.d/99no-check-valid-until
 
 RUN apt-get update && apt-get install -y \
+    build-essential \
     wget \
     ca-certificates \
-    libjpeg-turbo8 \
+    libfreetype6-dev \
+    libjpeg62-turbo-dev \
+    libpng-dev \
+    libgif-dev \
+    zlib1g-dev \
+    libx11-dev \
+    libxpm-dev \
+    libxt-dev \
+    libfontconfig1-dev \
     libfreetype6 \
-    libpng12-0 \
-    zlib1g
-
-# download precompiled SWFTools binary bundle
-RUN wget https://github.com/itsmattch/swftools-binaries/raw/main/swftools-linux.tar.gz \
-    && tar -xzf swftools-linux.tar.gz \
-    && mv swftools /usr/local/swftools \
-    && ln -s /usr/local/swftools/bin/* /usr/local/bin/
+    && rm -rf /var/lib/apt/lists/*
+    
+RUN wget https://github.com/swftools/swftools/archive/refs/tags/v0.9.2.tar.gz \
+    && tar -xzf v0.9.2.tar.gz \
+    && cd swftools-0.9.2 \
+    && ./configure --disable-werror \
+    && make -j1 \
+    && make install
 
 WORKDIR /app
 
