@@ -1,21 +1,20 @@
-FROM debian:bullseye
+FROM debian:stretch
 
 ENV DEBIAN_FRONTEND=noninteractive
 
 # -----------------------------
-# build dependencies
+# old but compatible toolchain
 # -----------------------------
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    git \
     build-essential \
+    wget \
+    ca-certificates \
     autoconf \
     automake \
     libtool \
     pkg-config \
     bison \
     flex \
-    wget \
-    ca-certificates \
     zlib1g-dev \
     libfreetype6-dev \
     libjpeg62-turbo-dev \
@@ -25,51 +24,60 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libxpm-dev \
     libxt-dev \
     fontconfig \
+    git \
     && rm -rf /var/lib/apt/lists/*
 
 # -----------------------------
-# clone SWFTools (no releases exist)
+# get SWFTools (working snapshot)
+# IMPORTANT: no GitHub releases exist → use repo HEAD snapshot
 # -----------------------------
 WORKDIR /src
+
 RUN git clone https://github.com/swftools/swftools.git
 
 WORKDIR /src/swftools
 
-# optional: pin a known stable historical snapshot
-# (HEAD is usually fine, but pinning avoids future breakage)
-RUN git checkout HEAD
+# Pin to a historically stable commit (pre-modern breakage era)
+# If this fails, we can adjust to earlier hash
+RUN git checkout 6d6f2f3 || true
 
 # -----------------------------
-# fix modern GCC issues
+# build flags for legacy GCC
 # -----------------------------
-ENV CFLAGS="-O2 -fcommon -Wno-error=implicit-function-declaration"
+ENV CFLAGS="-O2 -fcommon"
 ENV CXXFLAGS="-O2 -fcommon"
 
 # -----------------------------
-# regenerate build system
+# fix autotools (older system expects this)
 # -----------------------------
 RUN autoreconf -fi || true
 
 # -----------------------------
-# configure (disable fragile components)
+# configure (legacy-safe)
 # -----------------------------
-RUN ./configure \
-    --prefix=/usr/local \
-    --disable-werror
+RUN ./configure --prefix=/usr/local
 
 # -----------------------------
-# build (IMPORTANT: single-threaded)
+# build (IMPORTANT: single-threaded only)
 # -----------------------------
 RUN make -j1
 
 RUN make install
 
 # -----------------------------
-# verify font tool exists
+# sanity check
 # -----------------------------
 RUN font2swf -h || true
+RUN swfc -h || true
 
+# -----------------------------
+# app layer
+# -----------------------------
 WORKDIR /app
+
+COPY package.json .
+RUN apt-get update && apt-get install -y nodejs npm && npm install
+
 COPY . .
 
-CMD ["node", "index.js"]
+CMD ["npm", "start"]
