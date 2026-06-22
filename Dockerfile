@@ -23,7 +23,8 @@ RUN apt-get update && apt-get install -y \
     
 RUN wget https://github.com/swftools/swftools/archive/refs/tags/v0.9.2.tar.gz \
     && tar -xzf v0.9.2.tar.gz \
-    && cd swftools-0.9.2 \
+    && ls -la \
+    && cd swftools-* \
     && ./configure --disable-werror \
     && make -j1 \
     && make install
